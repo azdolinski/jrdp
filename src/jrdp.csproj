@@ -31,7 +31,7 @@
     <Description>Embeddable Remote Desktop client for Windows</Description>
     <Company>jrdp</Company>
     <!-- Overridden by CI with the release tag: -p:Version=1.2.3 -->
-    <Version>1.0.0</Version>
+    <Version>0.5.0</Version>
   </PropertyGroup>
 
   <!--

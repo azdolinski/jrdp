@@ -107,10 +107,11 @@ computes SHA-256 checksums, and creates the GitHub release with all four files
 attached. You can also trigger it manually from the Actions tab for a tag that
 doesn't exist yet.
 
-Version numbers come from the tag (`v1.2.3` → assembly version `1.2.3`), so
-there is no version constant to bump by hand except
-[`Program.VERSION`](src/Program.cs), which is reported in the stdio `ready`
-event.
+Version numbers come from the tag (`v1.2.3` → assembly version `1.2.3`), which
+is read back out of the assembly at runtime for `--version` and the stdio
+`ready` event. There is **no version constant to bump by hand**; the
+`<Version>` in [src/jrdp.csproj](src/jrdp.csproj) is only the fallback for
+local builds.
 
 ## Layout
 

@@ -11,6 +11,7 @@
 // launched us; when there is no parent console we fall back to a message box.
 
 using System;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -18,9 +19,26 @@ namespace Jrdp
 {
     internal static class Program
     {
-        // Bump on every source change. Reported in the stdio `ready` event so a
-        // host can confirm which build it is talking to, and by --version.
-        internal const string VERSION = "1.0.0";
+        // Read from the assembly rather than hardcoded, so the release tag is
+        // the single source of truth: CI stamps it with -p:Version=<tag>, and
+        // a local build falls back to the csproj's <Version>. Reported in the
+        // stdio `ready` event so a host can confirm which build it is talking
+        // to, and by --version.
+        internal static readonly string VERSION = ResolveVersion();
+
+        private static string ResolveVersion()
+        {
+            // InformationalVersion carries the full string including any
+            // pre-release suffix ("0.5.0", "0.0.0-dev"); AssemblyVersion would
+            // flatten it to 0.5.0.0. SourceRevisionId (a "+<sha>" suffix the
+            // SDK may append) is trimmed off.
+            var attr = System.Reflection.Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>();
+            string v = attr?.InformationalVersion;
+            if (string.IsNullOrEmpty(v)) return "0.0.0";
+            int plus = v.IndexOf('+');
+            return plus > 0 ? v.Substring(0, plus) : v;
+        }
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool AttachConsole(int dwProcessId);
