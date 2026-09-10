@@ -1,0 +1,23 @@
+# .NET build output
+bin/
+obj/
+
+# The published exe is a ~70 MB build artifact — never commit it. Releases
+# attach it to the GitHub release instead (see .github/workflows/release.yml).
+*.exe
+dist/
+
+# Checksums produced by the release workflow
+*.sha256
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store

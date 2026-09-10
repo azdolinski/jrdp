@@ -1,0 +1,22 @@
+# Normalise to LF in the repository; check out native on Windows.
+* text=auto
+
+# Keep LF on checkout for files consumed by tools that dislike CRLF.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+
+# PowerShell and the .NET toolchain are happier with CRLF on Windows.
+*.ps1 text eol=crlf
+*.cs text eol=crlf
+*.csproj text eol=crlf
+*.sln text eol=crlf
+*.manifest text eol=crlf
+*.config text eol=crlf
+
+# Never diff or line-ending-mangle binaries.
+*.exe binary
+*.dll binary
+*.png binary
+*.ico binary

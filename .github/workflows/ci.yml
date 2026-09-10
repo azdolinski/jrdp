@@ -1,0 +1,69 @@
+# Build verification on every push / PR. Same publish path as a release, but
+# x64 only and no artifacts are kept — this is a "does it still compile and
+# start" gate, not a release build.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Warnings as errors here but NOT in build.ps1: a release build should
+      # not fail on a new SDK's new warning, but a PR should surface it.
+      - name: Build (warnings as errors)
+        run: dotnet build src/jrdp.csproj -c Debug -warnaserror -nologo
+
+      - name: Publish (single-file, self-contained)
+        shell: pwsh
+        run: ./build.ps1 -Arch x64 -Version 0.0.0-ci
+
+      # The published bundle must actually start. --version and --help are the
+      # only paths that neither open a window nor need an RDP server.
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $exe = 'dist/jrdp-win-x64.exe'
+
+          $version = (& $exe --version 2>&1 | Out-String).Trim()
+          Write-Host "--version -> $version"
+          if ($LASTEXITCODE -ne 0) { throw "--version exited $LASTEXITCODE" }
+
+          $help = (& $exe --help 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "--help exited $LASTEXITCODE" }
+          if ($help -notmatch '--stdio') { throw '--help output missing --stdio' }
+
+          # An unknown argument must fail loudly rather than silently opening
+          # the connect dialog.
+          & $exe --definitely-not-an-option 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw 'unknown argument should exit non-zero' }
+
+          Write-Host 'smoke test OK'
+
+      # Drives the real stdin/stdout protocol: the helper must report its HWND,
+      # become ready, and exit cleanly on `quit`. This is the contract an
+      # embedding host depends on, so a regression here is a breaking change.
+      - name: Stdio protocol test
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $exe = Resolve-Path 'dist/jrdp-win-x64.exe'
+          $out = "{`"type`":`"quit`"}" | & $exe --stdio 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch '"type":"hwnd"')    { throw 'no hwnd event' }
+          if ($out -notmatch '"type":"ready"')   { throw 'no ready event' }
+          if ($out -notmatch '"type":"exiting"') { throw 'no exiting event' }
+          Write-Host 'stdio protocol OK'

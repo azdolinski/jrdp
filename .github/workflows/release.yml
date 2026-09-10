@@ -1,0 +1,159 @@
+# Builds jrdp.exe for win-x64 and win-arm64 and attaches both to a GitHub
+# release.
+#
+# Trigger: push a tag like `v1.2.3`, or run manually from the Actions tab
+# (workflow_dispatch) with a tag name to build a release without tagging first.
+#
+# Each arch is built on a NATIVE runner (windows-latest for x64,
+# windows-11-arm for arm64). Cross-publishing arm64 from x64 works but the
+# artifact then never gets smoke-tested on real hardware, so we don't.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # required to create the release and upload assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Strip the leading "v" so the assembly version is a valid
+      # System.Version (1.2.3), while the tag stays v1.2.3.
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $env:GITHUB_REF -replace '^refs/tags/', ''
+          } else {
+            '${{ inputs.tag }}'
+          }
+          $version = $tag -replace '^v', ''
+          if ($version -notmatch '^\d+\.\d+\.\d+') {
+            throw "tag '$tag' is not v<major>.<minor>.<patch>"
+          }
+          "tag=$tag"         >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Releasing $tag (assembly version $version)"
+
+      - name: Publish jrdp-win-${{ matrix.arch }}.exe
+        shell: pwsh
+        run: ./build.ps1 -Arch ${{ matrix.arch }} -Version ${{ steps.version.outputs.version }}
+
+      # Smoke test: the exe must start and report the version we just stamped.
+      # Catches a broken single-file bundle (the classic WinForms
+      # IncludeAllContentForSelfExtract failure) before it reaches a release.
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $exe = "dist/jrdp-win-${{ matrix.arch }}.exe"
+          $out = & $exe --version 2>&1 | Out-String
+          $out = $out.Trim()
+          Write-Host "--version -> $out"
+          if ($LASTEXITCODE -ne 0) { throw "jrdp --version exited $LASTEXITCODE" }
+          if ($out -notmatch [regex]::Escape('${{ steps.version.outputs.version }}')) {
+            throw "version mismatch: expected '${{ steps.version.outputs.version }}', got '$out'"
+          }
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $exe = "dist/jrdp-win-${{ matrix.arch }}.exe"
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  jrdp-win-${{ matrix.arch }}.exe" | Set-Content "$exe.sha256"
+          Write-Host "$hash"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jrdp-win-${{ matrix.arch }}
+          path: |
+            dist/jrdp-win-${{ matrix.arch }}.exe
+            dist/jrdp-win-${{ matrix.arch }}.exe.sha256
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Resolve tag
+        id: version
+        run: |
+          if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --generate-notes appends the commit log since the previous tag under
+      # our hand-written intro. `--verify-tag` is omitted so workflow_dispatch
+      # can create the tag as part of the release.
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls -la artifacts
+
+          cat > notes.md <<'EOF'
+          ## Downloads
+
+          | File | Platform |
+          | --- | --- |
+          | `jrdp-win-x64.exe` | Windows on Intel / AMD (x64) |
+          | `jrdp-win-arm64.exe` | Windows on ARM (arm64) |
+
+          Each `.exe` is self-contained and single-file: it bundles the .NET 8
+          runtime, so no .NET installation is required. A matching `.sha256`
+          file is attached for verification.
+
+          ## Usage
+
+          ```
+          jrdp                          # open the connect dialog
+          jrdp --host srv01 --user me   # connect immediately
+          jrdp --stdio                  # helper mode (JSON on stdin/stdout)
+          jrdp --help                   # all options
+          ```
+          EOF
+
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "jrdp ${{ steps.version.outputs.tag }}" \
+            --notes-file notes.md \
+            --generate-notes \
+            artifacts/jrdp-win-x64.exe \
+            artifacts/jrdp-win-x64.exe.sha256 \
+            artifacts/jrdp-win-arm64.exe \
+            artifacts/jrdp-win-arm64.exe.sha256

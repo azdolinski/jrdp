@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>jrdp</AssemblyName>
+    <RootNamespace>Jrdp</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DebugType>embedded</DebugType>
+    <Nullable>disable</Nullable>
+    <!--
+      `dynamic` COM dispatch needs the Microsoft.CSharp binder, which the SDK
+      trims away unless we keep it. We don't publish trimmed, but be explicit.
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <!--
+      WFAC010 tells us to move the DPI settings out of app.manifest and use
+      ApplicationHighDpiMode / Application.SetHighDpiMode instead. We keep them
+      in the manifest deliberately: PerMonitorV2 has to be in effect BEFORE any
+      managed code runs, because in helper mode the host may position us with
+      physical-pixel coordinates before Main gets a chance to call
+      SetHighDpiMode. Suppressed rather than "fixed".
+    -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Product>jrdp</Product>
+    <Description>Embeddable Remote Desktop client for Windows</Description>
+    <Company>jrdp</Company>
+    <!-- Overridden by CI with the release tag: -p:Version=1.2.3 -->
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <!--
+    Self-contained single-file publish. The resulting .exe bundles the .NET 8
+    runtime + WinForms, so the target machine needs no .NET installation.
+
+    IncludeAllContentForSelfExtract is REQUIRED for WinForms: without it the
+    runtime extract step omits resource assemblies and the form refuses to
+    load. EnableCompressionInSingleFile shrinks the artefact from ~150 MB to
+    ~70 MB (a one-time decompress cost on the end-user machine, then cached
+    in %TEMP%\.net\).
+
+    No RuntimeIdentifier here on purpose — `dotnet publish -r win-x64` /
+    `-r win-arm64` supplies it, so one csproj serves both arches.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
+  <!--
+    No NuGet packages, no COMReference (which the dotnet CLI's MSBuild can't
+    resolve). We host the RDP ActiveX control by subclassing AxHost with the
+    raw CLSID and calling every COM property/method through `dynamic`
+    IDispatch — no typed interop, no aximp, no Windows SDK.
+
+    JSON: System.Text.Json (built into .NET 8).
+  -->
+
+</Project>
