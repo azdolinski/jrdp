@@ -17,18 +17,56 @@ namespace Jrdp
         public bool Stdio;
         public bool ShowHelp;
         public bool ShowVersion;
+        public bool PrintConfig;
         public string Error;
         public RdpConnectionSettings Settings = new RdpConnectionSettings();
+
+        // The bare argument consumed as an input source (a .rdp path or an
+        // rdp:// URI), so the option loop can skip it instead of reporting it
+        // as unknown.
+        public string ConsumedPositional;
 
         public static CommandLineOptions Parse(string[] args)
         {
             var o = new CommandLineOptions();
             var s = o.Settings;
 
+            // A bare (non-option) argument is what Windows passes a registered
+            // handler: a .rdp file path from the file association, or an
+            // rdp:// URI from the protocol handler. Apply those FIRST so any
+            // explicit flags after them win — `jrdp x.rdp --port 3390` uses
+            // 3390 regardless of what the file says.
+            for (int i = 0; i < args.Length; i++)
+            {
+                string arg = args[i];
+                if (arg.Length == 0 || arg.StartsWith("-")) continue;
+
+                // Only treat it as an input source if it's recognisably one;
+                // otherwise leave it to the option loop, which reports it as
+                // an unknown argument.
+                if (RdpUri.LooksLikeRdpUri(arg))
+                {
+                    o.Error = RdpUri.Apply(arg, s);
+                    if (o.Error != null) return o;
+                    o.ConsumedPositional = arg;
+                    break;
+                }
+                if (RdpFile.LooksLikeRdpFile(arg))
+                {
+                    o.Error = RdpFile.Apply(arg, s);
+                    if (o.Error != null) return o;
+                    o.ConsumedPositional = arg;
+                    break;
+                }
+            }
+
             for (int i = 0; i < args.Length; i++)
             {
                 string arg = args[i];
                 if (arg.Length == 0) continue;
+
+                // Already handled above as the input source.
+                if (arg == o.ConsumedPositional) continue;
 
                 // Split --key=value into key + inline value.
                 string key = arg, inline = null;
@@ -81,6 +119,7 @@ namespace Jrdp
                     case "?":       o.ShowHelp = true; break;
                     case "version":
                     case "v":       o.ShowVersion = true; break;
+                    case "print-config": o.PrintConfig = true; break;
 
                     case "host":
                     case "server":  s.Host = nextValue() ?? s.Host; break;
@@ -135,7 +174,15 @@ namespace Jrdp
 USAGE
   jrdp                          Open the connect dialog
   jrdp --host <name> [options]  Connect immediately
+  jrdp <file.rdp>               Open a Microsoft .rdp connection file
+  jrdp <rdp://host[:port]>      Open an rdp:// URI
   jrdp --stdio                  Helper mode: JSON protocol on stdin/stdout
+
+A .rdp file or rdp:// URI may be combined with options; the options win:
+  jrdp srv01.rdp --port 3390 --no-drives
+
+Register jrdp as the handler for .rdp files and rdp:// links:
+  see docs/windows-integration.md
 
 CONNECTION
   --host, --server <name>   Computer name or IP address
@@ -163,6 +210,7 @@ DISPLAY & SECURITY
 
 OTHER
   --stdio                   Helper mode for embedding hosts
+  --print-config            Print the resolved settings and exit (no connect)
   --version                 Print the version and exit
   --help                    Print this help and exit
 ";

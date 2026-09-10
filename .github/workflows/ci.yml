@@ -76,3 +76,75 @@ jobs:
           if ($out -notmatch '"type":"exiting"') { throw 'no exiting event' }
           if ($LASTEXITCODE -ne 0) { throw "jrdp --stdio exited $LASTEXITCODE" }
           Write-Host 'stdio protocol OK'
+
+      # The .rdp / rdp:// parsers are what the Windows registry integration
+      # feeds (docs/windows-integration.md), so they need to keep working.
+      # --print-config resolves the input without connecting.
+      - name: Input parsing test (.rdp files and rdp:// URIs)
+        shell: pwsh
+        run: |
+          $exe = 'dist/jrdp-win-x64.exe'
+
+          function Check($label, $out, $expected) {
+            foreach ($e in $expected) {
+              if ($out -notmatch $e) {
+                Write-Host $out
+                throw "$label : expected /$e/"
+              }
+            }
+            Write-Host "  ok: $label"
+          }
+
+          # A .rdp file in the format mstsc actually writes, including the
+          # DPAPI password blob (which must be ignored, not parsed).
+          @'
+          full address:s:srv01.corp.example:3390
+          username:s:CORP\azdolinski
+          domain:s:CORP
+          audiomode:i:2
+          redirectclipboard:i:0
+          drivestoredirect:s:*
+          password 51:b:01000000D08C9DDF0115D1118C7A00C04FC297EB
+          '@ -split "`n" | ForEach-Object { $_.Trim() } | Set-Content test.rdp
+
+          # Single-quoted patterns: PowerShell does no escape processing, so
+          # '\\' reaches the regex engine as an escaped literal backslash.
+          Check '.rdp file' (& $exe test.rdp --print-config | Out-String) @(
+            'host\s+srv01\.corp\.example', 'port\s+3390',
+            'username\s+CORP\\azdolinski', 'audioMode\s+2',
+            'redirectClipboard\s+False', 'redirectDrives\s+True',
+            'password\s+\(none\)'   # the b: blob must NOT become a password
+          )
+
+          Check 'flags override the file' (& $exe test.rdp --port 3999 --no-drives --print-config | Out-String) @(
+            'port\s+3999', 'redirectDrives\s+False'
+          )
+
+          Check 'rdp:// authority form' (& $exe 'rdp://srv02:3391' --print-config | Out-String) @(
+            'host\s+srv02', 'port\s+3391'
+          )
+
+          # The exact shape Windows passes a protocol handler: it inserts a
+          # "/" before the query string.
+          Check 'rdp:// as Windows passes it' (& $exe 'rdp://CORP%5Cme@srv03:3392/?redirectclipboard=0' --print-config | Out-String) @(
+            'host\s+srv03', 'port\s+3392', 'username\s+me', 'domain\s+CORP',
+            'redirectClipboard\s+False'
+          )
+
+          Check 'rdp:// Microsoft setting form' (& $exe 'rdp://full%20address=s:srv04:3393&username=s:bob' --print-config | Out-String) @(
+            'host\s+srv04', 'port\s+3393', 'username\s+bob'
+          )
+
+          # A password in a URI must be ignored: URIs leak into history/logs.
+          Check 'URI password ignored' (& $exe 'rdp://me:secret@srv05' --print-config | Out-String) @(
+            'username\s+me', 'password\s+\(none\)'
+          )
+
+          # Bad input must fail loudly rather than opening a dialog.
+          & $exe 'rdp://' --print-config 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw 'empty rdp:// URI should fail' }
+          & $exe missing.rdp --print-config 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw 'missing .rdp file should fail' }
+          $global:LASTEXITCODE = 0
+
+          Write-Host 'input parsing OK'

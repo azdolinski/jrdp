@@ -64,6 +64,14 @@ namespace Jrdp
                 WriteConsoleOrBox("jrdp " + VERSION, false);
                 return 0;
             }
+            // Resolve the command line and print what we WOULD connect with,
+            // without connecting. The way to check that a .rdp file, an
+            // rdp:// URI, or a registry handler passes what you expect.
+            if (opts.PrintConfig)
+            {
+                WriteConsoleOrBox(opts.Settings.Describe(), false);
+                return 0;
+            }
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);

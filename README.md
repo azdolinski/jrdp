@@ -48,6 +48,20 @@ Passing `--password` puts the password in the process list where any local
 user can read it. Prefer the dialog, or leave it out and let the server
 prompt.
 
+### Opening `.rdp` files and `rdp://` links
+
+```
+jrdp srv01.rdp                          # a Microsoft .rdp connection file
+jrdp "rdp://srv01:3390"                 # an rdp:// URI
+jrdp "rdp://CORP%5Cme@srv01"            # DOMAIN\user (%5C is a backslash)
+jrdp srv01.rdp --port 3390 --no-drives  # options override the file
+jrdp srv01.rdp --print-config           # show what it resolved to, don't connect
+```
+
+To make Windows open these with jrdp — double-clicking a `.rdp` file, or
+clicking an `rdp://` link in a browser — register it:
+**[docs/windows-integration.md](docs/windows-integration.md)**.
+
 ### Helper mode (embedding)
 
 ```
@@ -119,6 +133,8 @@ local builds.
 | --- | --- |
 | [src/Program.cs](src/Program.cs) | Entry point; picks GUI or stdio mode |
 | [src/CommandLineOptions.cs](src/CommandLineOptions.cs) | Argument parsing and `--help` |
+| [src/RdpFile.cs](src/RdpFile.cs) | Parses Microsoft `.rdp` connection files |
+| [src/RdpUri.cs](src/RdpUri.cs) | Parses `rdp://` URIs |
 | [src/GuiMode.cs](src/GuiMode.cs) | Standalone client |
 | [src/ConnectDialog.cs](src/ConnectDialog.cs) | The connect dialog |
 | [src/StdioMode.cs](src/StdioMode.cs) | JSON protocol loop for embedding hosts |

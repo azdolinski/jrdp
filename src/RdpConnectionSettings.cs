@@ -36,6 +36,34 @@ namespace Jrdp
         public bool EnableNla        = true;
         public bool IgnoreCertErrors = false;
 
+        // Human-readable dump for `--print-config`: what jrdp resolved the
+        // command line (including any .rdp file or rdp:// URI) down to,
+        // without connecting. The password is masked so the output is safe to
+        // paste into a bug report.
+        public string Describe()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("host               " + (Host.Length > 0 ? Host : "(none)"));
+            sb.AppendLine("port               " + Port);
+            sb.AppendLine("username           " + (Username.Length > 0 ? Username : "(none)"));
+            sb.AppendLine("domain             " + (Domain.Length > 0 ? Domain : "(none)"));
+            sb.AppendLine("password           " + (Password.Length > 0
+                ? "(set, " + Password.Length + " chars)" : "(none)"));
+            sb.AppendLine("size               " + Width + "x" + Height);
+            sb.AppendLine("smartSizing        " + SmartSizing);
+            sb.AppendLine("redirectClipboard  " + RedirectClipboard);
+            sb.AppendLine("redirectDrives     " + RedirectDrives);
+            sb.AppendLine("redirectPrinters   " + RedirectPrinters);
+            sb.AppendLine("redirectSmartCards " + RedirectSmartCards);
+            sb.AppendLine("redirectPorts      " + RedirectPorts);
+            sb.AppendLine("redirectWebauthn   " + RedirectWebauthn);
+            sb.AppendLine("audioMode          " + AudioMode);
+            sb.AppendLine("audioCapture       " + AudioCapture);
+            sb.AppendLine("enableNla          " + EnableNla);
+            sb.AppendLine("ignoreCertErrors   " + IgnoreCertErrors);
+            return sb.ToString();
+        }
+
         // Parses the wire format used by the stdio `connect` command. Field
         // names and defaults are kept identical to the original helper so
         // existing hosts (yterminal) keep working byte-for-byte.
