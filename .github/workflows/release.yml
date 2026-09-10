@@ -81,6 +81,25 @@ jobs:
             throw "version mismatch: expected '${{ steps.version.outputs.version }}', got '$out'"
           }
 
+      # Verify the stdio contract on the exact binary we're about to publish —
+      # this is what embedding hosts consume, so a regression here is breaking.
+      # arm64 runners execute this natively, so it's a real test on both arches.
+      - name: Stdio protocol test
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $exe = Resolve-Path "dist/jrdp-win-${{ matrix.arch }}.exe"
+          $out = "{`"type`":`"quit`"}" | & $exe --stdio 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch '"type":"hwnd"')    { throw 'no hwnd event' }
+          if ($out -notmatch '"type":"ready"')   { throw 'no ready event' }
+          if ($out -notmatch '"type":"exiting"') { throw 'no exiting event' }
+          if ($out -notmatch [regex]::Escape('"version":"${{ steps.version.outputs.version }}"')) {
+            throw 'ready event reported the wrong version'
+          }
+          if ($LASTEXITCODE -ne 0) { throw "jrdp --stdio exited $LASTEXITCODE" }
+          Write-Host 'stdio protocol OK'
+
       - name: Checksum
         shell: pwsh
         run: |

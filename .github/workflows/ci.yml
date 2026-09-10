@@ -49,8 +49,16 @@ jobs:
           # An unknown argument must fail loudly rather than silently opening
           # the connect dialog.
           & $exe --definitely-not-an-option 2>&1 | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw 'unknown argument should exit non-zero' }
+          $badArgExit = $LASTEXITCODE
+          if ($badArgExit -eq 0) { throw 'unknown argument should exit non-zero' }
 
+          # Reset $LASTEXITCODE: the Actions pwsh shell appends an implicit
+          # `exit $LASTEXITCODE`, so leaving the expected non-zero code from
+          # the check above would fail the step even though every assertion
+          # passed.
+          $global:LASTEXITCODE = 0
+
+          Write-Host "unknown argument -> exit $badArgExit (expected non-zero)"
           Write-Host 'smoke test OK'
 
       # Drives the real stdin/stdout protocol: the helper must report its HWND,
@@ -66,4 +74,5 @@ jobs:
           if ($out -notmatch '"type":"hwnd"')    { throw 'no hwnd event' }
           if ($out -notmatch '"type":"ready"')   { throw 'no ready event' }
           if ($out -notmatch '"type":"exiting"') { throw 'no exiting event' }
+          if ($LASTEXITCODE -ne 0) { throw "jrdp --stdio exited $LASTEXITCODE" }
           Write-Host 'stdio protocol OK'
